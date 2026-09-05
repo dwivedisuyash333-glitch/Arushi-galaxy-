@@ -1,0 +1,141 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Galaxy V13 — 500K Stars — Natural Color</title>
+<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000}canvas{width:100%;height:100%;display:block;touch-action:none}#e{position:fixed;top:10px;left:10px;color:#fff;font:12px Arial;opacity:.45}</style>
+<style id="love-reveal-css">
+#loveReveal{position:fixed;inset:0;z-index:9999;background:#000;display:none;overflow:hidden;pointer-events:auto;touch-action:none;}
+#loveReveal .loveWrap{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;transform:translateZ(0);}
+#loveReveal .main{font-family:"Brush Script MT","Segoe Script","URW Chancery L","Apple Chancery",cursive;font-size:clamp(48px,12vw,104px);font-weight:500;font-style:italic;letter-spacing:.025em;color:#fff8d8;text-shadow:0 0 7px rgba(255,241,160,.95),0 0 22px rgba(255,205,70,.70),0 0 48px rgba(255,180,30,.34);opacity:0;transform:scale(.82) translateY(10px);transition:opacity 2.2s ease,transform 2.8s cubic-bezier(.2,.8,.2,1);white-space:nowrap;}
+#loveReveal .sub{margin-top:18px;font-family:Georgia,"Times New Roman",serif;font-size:clamp(15px,3.8vw,26px);font-weight:400;letter-spacing:.10em;color:rgba(255,248,218,.82);text-shadow:0 0 12px rgba(255,210,100,.38);opacity:0;transform:translateY(12px);transition:opacity 2.4s ease 1.1s,transform 2.4s ease 1.1s;}
+#loveReveal.show .main{opacity:1;transform:scale(1) translateY(0)}
+#loveReveal.show .sub{opacity:1;transform:translateY(0)}
+#loveReveal .tiny{position:absolute;bottom:7.5%;font:11px Arial,sans-serif;letter-spacing:.18em;color:rgba(255,255,255,.28);opacity:0;transition:opacity 2s ease 2.8s;}
+#loveReveal.show .tiny{opacity:1}
+</style></head><body><canvas id="g"></canvas><div id="e">V13 • 300,000 stars + dust/halo</div>
+<script>
+const c=document.getElementById('g'),e=document.getElementById('e');
+const gl=c.getContext('webgl2',{antialias:false,alpha:false,powerPreference:'high-performance'});
+if(!gl){e.textContent='WebGL 2 unavailable';throw Error('WebGL2 unavailable');}
+
+const V=`#version 300 es
+precision highp float;
+in vec3 aPos;in vec3 aCol;in float aSize;in float aSeed;in float aKind;
+uniform mat4 uMVP;uniform float uSpin;uniform float uTime;uniform float uZoom;
+out vec3 vCol;out float vSeed;flat out float vKind;
+void main(){
+ float r=length(aPos.xz);
+ float a=atan(aPos.z,aPos.x)+uSpin/(.78+.085*r);
+ vec3 q=vec3(cos(a)*r,aPos.y,sin(a)*r*.70);
+ // Stars stay visually steady; only the galaxy's global rotation moves them.
+ q.y+=0.0;
+ gl_Position=uMVP*vec4(q,1.0);
+ float scale=aKind<.5?88.0:(aKind<1.5?120.0:92.0);
+ float zf=pow(clamp(uZoom,.65,4.0),.12);
+ // Keep star size stable while the galaxy rotates; this removes temporal size-popping.
+ gl_PointSize=clamp(aSize*scale*zf,.85,aKind<1.5?6.0:4.5);
+ vCol=aCol;vSeed=aSeed;vKind=aKind;
+}`;
+
+const F=`#version 300 es
+precision mediump float;
+in vec3 vCol;in float vSeed;flat in float vKind;out vec4 outColor;
+void main(){
+ vec2 p=gl_PointCoord-.5;float d=length(p)*2.0;if(d>1.0)discard;
+ if(vKind<.5){
+   float core=exp(-d*d*105.0);
+   float halo=exp(-d*d*18.0)*.10;
+   float inner=exp(-d*d*260.0);
+   vec3 whiteMix=mix(vCol,vec3(1.0),.025);
+   float glow=core*.44+inner*.24+halo*.08;
+   outColor=vec4(whiteMix*glow,glow);
+ }else if(vKind<1.5){
+   float cloud=exp(-d*d*2.0);
+   float n=.5+.5*sin(vSeed*17.0+p.x*9.0+p.y*7.0);
+   outColor=vec4(vCol*(.62+.38*n),cloud*.035);
+ }else{
+   float core=exp(-d*d*170.0);
+   float sx=pow(max(0.,1.-abs(p.x)*11.),9.);
+   float sy=pow(max(0.,1.-abs(p.y)*11.),9.);
+   float sp=(sx+sy)*.10;
+   outColor=vec4(vCol*(core*1.3+sp),core*.94+sp*.06);
+ }
+}`;
+
+function make(type,src){let s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)){e.textContent=gl.getShaderInfoLog(s);throw Error(gl.getShaderInfoLog(s))}return s}
+let pr=gl.createProgram();gl.attachShader(pr,make(gl.VERTEX_SHADER,V));gl.attachShader(pr,make(gl.FRAGMENT_SHADER,F));gl.linkProgram(pr);
+if(!gl.getProgramParameter(pr,gl.LINK_STATUS)){e.textContent=gl.getProgramInfoLog(pr);throw 0}gl.useProgram(pr);
+const A={p:gl.getAttribLocation(pr,'aPos'),c:gl.getAttribLocation(pr,'aCol'),s:gl.getAttribLocation(pr,'aSize'),r:gl.getAttribLocation(pr,'aSeed'),k:gl.getAttribLocation(pr,'aKind'),m:gl.getUniformLocation(pr,'uMVP'),spin:gl.getUniformLocation(pr,'uSpin'),time:gl.getUniformLocation(pr,'uTime'),zoom:gl.getUniformLocation(pr,'uZoom')};
+
+const N=300000,P=new Float32Array(N*3),C=new Float32Array(N*3),S=new Float32Array(N),R=new Float32Array(N),K=new Float32Array(N);
+let seed=48372917;function rnd(){seed=(seed*1664525+1013904223)>>>0;return seed/4294967296}function gauss(){return(rnd()+rnd()+rnd()+rnd()-2)*.5}
+const stars=[
+ [1.00,1.00,1.00],[0.96,0.98,1.00],[0.88,0.94,1.00],[0.76,0.88,1.00],
+ [0.62,0.78,1.00],[0.46,0.68,1.00],[0.72,0.86,1.00],[0.54,0.74,1.00],
+ [0.82,0.92,1.00],[0.95,0.98,1.00],
+ [1.00,0.92,0.72],[1.00,0.78,0.42],[1.00,0.62,0.30],
+ [0.72,0.58,1.00],[0.56,0.42,1.00],[0.98,0.52,0.76],[0.78,0.38,0.90]
+];
+const dust=[[.10,.18,.65],[.18,.10,.72],[.34,.14,.88],[.52,.15,.82],[.78,.12,.60],[.94,.18,.48],[.20,.30,.86]];
+const arms=4,T=6.283185;
+function arm(r,k){return k*T/arms+.48*Math.log(1+r*.58)}
+function put(i,r,a,y,col,size,kind){let q=i*3;P[q]=Math.cos(a)*r;P[q+1]=y;P[q+2]=Math.sin(a)*r*.70;C[q]=col[0];C[q+1]=col[1];C[q+2]=col[2];S[i]=size;R[i]=rnd();K[i]=kind}
+let i=0;
+// 250k stellar particles — reduced density for a more natural, less white galaxy.
+while(i<250000){let r=.03+Math.pow(rnd(),.58)*15,a;if(rnd()<.77){let k=(rnd()*arms)|0;a=arm(r,k)+gauss()*(.18+.023*r+.005*r*r);if(rnd()<.25)a+=gauss()*(.10+.018*r)}else a=rnd()*T;let rr=Math.max(.02,r+gauss()*(.025+.04*r));let u=rnd(), col;
+// White + blue/cyan are intentionally dominant; other colors remain as accents.
+if(u<.10) col=stars[(rnd()<.70?0:1+((rnd()*9)|0))];
+else if(u<.60) col=stars[2+((rnd()*8)|0)];
+else if(u<.85) col=stars[10+((rnd()*3)|0)];
+else col=stars[13+((rnd()*4)|0)];
+if(rr<4&&rnd()<.25) col=stars[(rnd()<.55?0:1+((rnd()*7)|0))];
+if(rr>7&&rnd()<.52) col=stars[2+((rnd()*8)|0)];let bright=rnd()<.006;put(i++,rr,a,gauss()*(.018+.055*Math.pow(rr/15,1.5)),col,bright?.62+rnd()*.62:.15+rnd()*.34,bright?2:0)}
+// 32k warm/white/blue central bulge — same V13 galaxy radius.
+while(i<282000){let r=Math.pow(rnd(),1.8)*4.2;let col=[[1,.99,.94],[1,.90,.68],[1,.78,.44],[1,.94,.80]][(rnd()*4)|0];put(i++,r,rnd()*T,gauss()*.13,col,.10+rnd()*.30,rnd()<.003?2:0)}
+// 15k faint dust/smoke mixed through and around the SAME arms.
+while(i<297000){let r=.15+Math.pow(rnd(),.57)*15.2,k=(rnd()*arms)|0;let a=arm(r,k)+(rnd()<.5?-1:1)*(.10+.018*r)+gauss()*(.24+.035*r);put(i++,r,a,gauss()*(.04+.12*r/15),dust[(rnd()*dust.length)|0],.30+rnd()*.85,1)}
+// 3k faint halo field.
+while(i<N){let r=1+Math.pow(rnd(),.46)*18;put(i++,r,rnd()*T,gauss()*(.45+r/8),stars[(rnd()*stars.length)|0],.07+rnd()*.18,3)}
+
+function buf(data,loc,n){let b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,data,gl.STATIC_DRAW);gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,n,gl.FLOAT,false,0,0)}
+buf(P,A.p,3);buf(C,A.c,3);buf(S,A.s,1);buf(R,A.r,1);buf(K,A.k,1);
+
+let W=1,H=1,D=1;function resize(){D=1;W=innerWidth;H=innerHeight;c.width=W;c.height=H;gl.viewport(0,0,W,H)}addEventListener('resize',resize);resize();
+
+function mul(a,b){let o=new Float32Array(16);for(let col=0;col<4;col++)for(let row=0;row<4;row++)o[col*4+row]=a[row]*b[col*4]+a[4+row]*b[col*4+1]+a[8+row]*b[col*4+2]+a[12+row]*b[col*4+3];return o}
+function persp(fov,asp,n,f){let t=1/Math.tan(fov/2),m=new Float32Array(16);m[0]=t/asp;m[5]=t;m[10]=(f+n)/(n-f);m[11]=-1;m[14]=2*f*n/(n-f);return m}
+function rx(a){let c=Math.cos(a),s=Math.sin(a);return new Float32Array([1,0,0,0,0,c,s,0,0,-s,c,0,0,0,0,1])}
+function ry(a){let c=Math.cos(a),s=Math.sin(a);return new Float32Array([c,0,-s,0,0,1,0,0,s,0,c,0,0,0,0,1])}
+function tr(z){return new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,-z,1])}
+
+let yaw=.18,pitch=.18,cam=16,ty=yaw,tp=pitch,tc=cam,spin=0,last=performance.now(),pts={},one=null,pp=null;
+function pinch(){let a=Object.values(pts);if(a.length<2)return null;return{d:Math.hypot(a[1].x-a[0].x,a[1].y-a[0].y),a:Math.atan2(a[1].y-a[0].y,a[1].x-a[0].x)}}
+c.onpointerdown=e=>{try{c.setPointerCapture(e.pointerId)}catch(_){}pts[e.pointerId]={x:e.clientX,y:e.clientY};if(Object.keys(pts).length===1)one={x:e.clientX,y:e.clientY};if(Object.keys(pts).length===2)pp=pinch()};
+c.onpointermove=e=>{if(!pts[e.pointerId])return;pts[e.pointerId]={x:e.clientX,y:e.clientY};let n=Object.keys(pts).length;if(n===1&&one){ty+=(e.clientX-one.x)*.006;tp=Math.max(-1.2,Math.min(1.2,tp+(e.clientY-one.y)*.004));one={x:e.clientX,y:e.clientY}}else if(n>1){let q=pinch();if(q&&pp){tc=Math.max(.055,Math.min(36,tc*pp.d/q.d));let da=Math.atan2(Math.sin(q.a-pp.a),Math.cos(q.a-pp.a));ty+=da*.65}pp=q}};
+function end(e){delete pts[e.pointerId];let a=Object.values(pts);one=a.length===1?{x:a[0].x,y:a[0].y}:null;pp=a.length===2?pinch():null}c.onpointerup=end;c.onpointercancel=end;
+
+function frame(now){let dt=Math.min(50,now-last);last=now;if(!Object.keys(pts).length)spin+=dt*.00018;
+yaw+=(ty-yaw)*.09;pitch+=(tp-pitch)*.09;cam+=(tc-cam)*.10;
+if(cam<.75 && !window.__coreEntered){window.__coreEntered=performance.now();}
+if(window.__coreEntered && performance.now()-window.__coreEntered>700 && window.__launchLove)window.__launchLove();
+let m=mul(persp(Math.PI/3,W/H,.008,70),tr(cam));m=mul(m,rx(pitch));m=mul(m,ry(yaw));
+gl.clearColor(0,0,0,1);gl.clear(gl.COLOR_BUFFER_BIT);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE);gl.disable(gl.DEPTH_TEST);
+gl.uniformMatrix4fv(A.m,false,m);gl.uniform1f(A.spin,spin);gl.uniform1f(A.time,now*.001);gl.uniform1f(A.zoom,16/cam);gl.drawArrays(gl.POINTS,0,N);
+requestAnimationFrame(frame)}requestAnimationFrame(frame);
+</script>
+<div id="loveReveal" aria-hidden="true"><div class="loveWrap"><div class="main">I love you, Arushiiiiii ♡</div><div class="sub">You are my favourite part of this universe.</div></div><div class="tiny">PINCH OUT TO RETURN TO THE GALAXY</div></div>
+<script id="love-reveal-script">
+(()=>{
+ const layer=document.getElementById('loveReveal');
+ const main=layer.querySelector('.main');
+ let started=false,start=0,pts={},prevDist=0;
+ function dist(){const a=Object.values(pts);return a.length<2?0:Math.hypot(a[1].x-a[0].x,a[1].y-a[0].y)}
+ function show(){if(started)return;started=true;start=performance.now();layer.style.display='block';layer.classList.remove('show');setTimeout(()=>layer.classList.add('show'),6500);}
+ function hide(){if(!started)return;started=false;layer.classList.remove('show');layer.style.display='none';window.__coreEntered=0;tc=Math.max(tc,1.05);ty=yaw;tp=pitch;requestAnimationFrame(()=>{});}
+ layer.addEventListener('pointerdown',e=>{pts[e.pointerId]={x:e.clientX,y:e.clientY};if(Object.keys(pts).length===2)prevDist=dist();try{layer.setPointerCapture(e.pointerId)}catch(_){} });
+ layer.addEventListener('pointermove',e=>{if(!pts[e.pointerId])return;pts[e.pointerId]={x:e.clientX,y:e.clientY};if(Object.keys(pts).length===2){const d=dist();if(prevDist&&d<prevDist){tc=Math.min(36,tc*prevDist/d);if(tc>1.35)hide()}prevDist=d;}});
+ function end(e){delete pts[e.pointerId];if(Object.keys(pts).length<2)prevDist=0;}
+ layer.addEventListener('pointerup',end);layer.addEventListener('pointercancel',end);layer.addEventListener('pointerleave',end);
+ window.__launchLove=show;
+})();
+</script></body></html>
